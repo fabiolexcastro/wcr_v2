@@ -83,7 +83,7 @@ make.clst.occr <- function(tble, spce){
   occ.clp <- cbind(occ, cluster = occ.lrf) %>% na.omit() %>% as_tibble()
   
   ## To save the results
-  dir <- glue('./rData/{nme}/run_'); dir_create(dir)
+  dir <- glue('./rData/{nme}/run_1'); dir_create(dir)
   save(occ.mtx, file = glue('{dir}/datRF.rData'))
   save(occ.cls, file = glue('{dir}/clusterdata.rData'))
   save(occ, occ.clp, occ.ncl, occ.lrf, file = glue('{dir}/clustereddata.rData'))
@@ -191,7 +191,7 @@ make.rfrs.mdel <- function(tble, crop){
     
     rfmodel <- randomForest(model1, data = envtrain, ntree = 500, na.action = na.omit, nodesize = 2) 
     
-    dir_create(glue('./rf/output/{nme}/run_2/models'))
+    dir_create(glue('./rf/output/{nme}/run_1/models'))
     save(rfmodel, file = glue('./rf/output/{nme}/run_1/models/RF_', NumberOfClusters, 'Prob_' , 'rep_' ,repe, '.rdata' ,sep=''))
     rflist[[repe]] <- rfmodel
     
