@@ -186,7 +186,7 @@ prds <- c('2021-2040', '2041-2060')
 # 07 to make limitations / mixed ------------------------------------------
 ftre <- map(.x = 1:length(dirs), .f = function(d){make.uncr(dir = dirs[d])})
 ftre <- reduce(ftre, c)
-terra::writeRaster(x = ftre, filename = './rf/output/predict_future_all-run1_percentile_5.tif', overwrite = TRUE)
+terra::writeRaster(x = ftre, filename = './rf/output/predict_future_all-run1_percentile_.tif', overwrite = TRUE)
 
 # To list the raw files  --------------------------------------------------
 
