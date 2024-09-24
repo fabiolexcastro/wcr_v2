@@ -1,6 +1,4 @@
 
-
-
 # Load libraries ----------------------------------------------------------
 require(pacman)
 pacman::p_load(terra, fs, usdm, spocc, sf, outliers, glue, CoordinateCleaner, tidyverse, rgbif, readxl, xlsx, openxlsx, rnaturalearthdata, rnaturalearth)
@@ -83,7 +81,7 @@ make.clst.occr <- function(tble, spce){
   occ.clp <- cbind(occ, cluster = occ.lrf) %>% na.omit() %>% as_tibble()
   
   ## To save the results
-  dir <- glue('./rData/{nme}/run_1'); dir_create(dir)
+  dir <- glue('./rData/{nme}/run_'); dir_create(dir)
   save(occ.mtx, file = glue('{dir}/datRF.rData'))
   save(occ.cls, file = glue('{dir}/clusterdata.rData'))
   save(occ, occ.clp, occ.ncl, occ.lrf, file = glue('{dir}/clustereddata.rData'))
@@ -98,7 +96,8 @@ make.rfrs.mdel <- function(tble, crop){
   
   ## To start the process
   cat('To start the process: ', crop, '\n')
-  nme <- filter(lbls, specie == spce) %>% pull(2)
+  spce <- crop
+  nme <- filter(lbls, sp.ecie == spce) %>% pull(2)
   
   ## No Forest / No Trees
   no.forest <- 25
@@ -130,7 +129,7 @@ make.rfrs.mdel <- function(tble, crop){
     na.omit() %>%
     as.data.frame() %>%
     mutate(cluster = cluster + no.absenceclasses)
-  presvalue_swd <- dplyr::select(presvalue_swd, pb, bioc_1:bioc_19, bioc_21:bioc_29)
+  presvalue_swd <- dplyr::select(presvalue_swd, pb, starts_with('bioc'))
   presvalue_swd <- mutate(presvalue_swd, pb = as.factor(pb))
   classdata <- occ.cld
   
@@ -139,12 +138,13 @@ make.rfrs.mdel <- function(tble, crop){
   dim(classdata_2); dim(presvalue_swd)
   # presvalue_swd <- presvalue_swd %>% dplyr::select(-cluster)
   classdata_2 <- dplyr::select(classdata_2, -Longitude, -Latitude)
+  classdata_2 <- dplyr::select(classdata_2, -nombre)
   
   allclasses_swd <- rbind(classdata_2, presvalue_swd[,1:ncol(classdata_2)])
   unique(allclasses_swd$pb)
   
   ## To save the results
-  dir <- glue('./rData/{nme}/run_1'); dir_create(dir)
+  dir <- glue('./rData/{nme}/run_2'); dir_create(dir)
   save(bck.mtx, file = glue('{dir}/back_datRF.rData'))
   save(bck.cls, file = glue('{dir}/back_clusterdata.rData'))
   save(bck, bck.clp, bck.ncl, bck.lrf, file = glue('{dir}/back_clustereddata.rData'))
@@ -153,7 +153,8 @@ make.rfrs.mdel <- function(tble, crop){
   ## To make the random forest
   
   # To make the random forest analysis --------------------------------------
-  vrs <- c(paste0('bioc_', 1:19), paste0('bioc_', 21:29))
+  # vrs <- c(paste0('bioc_', 1:19), paste0('bioc_', 21:29))
+  vrs <- colnames(allclasses_swd)[2:ncol(allclasses_swd)]
   model1 <- as.formula(paste('factor(pb) ~', paste(paste(vrs), collapse = '+', sep =' ')))
   rflist <- vector('list', 50) 
   auc <- vector('list', 50)
@@ -191,7 +192,7 @@ make.rfrs.mdel <- function(tble, crop){
     
     rfmodel <- randomForest(model1, data = envtrain, ntree = 500, na.action = na.omit, nodesize = 2) 
     
-    dir_create(glue('./rf/output/{nme}/run_1/models'))
+    dir_create(glue('./rf/output/{nme}/run_2/models'))
     save(rfmodel, file = glue('./rf/output/{nme}/run_1/models/RF_', NumberOfClusters, 'Prob_' , 'rep_' ,repe, '.rdata' ,sep=''))
     rflist[[repe]] <- rfmodel
     
@@ -205,19 +206,23 @@ make.rfrs.mdel <- function(tble, crop){
     
   }
   
+  allclasses_swd
+  
   auc <- unlist(auc)
   rff <- do.call(randomForest::combine, rflist)
   importance <- as.data.frame(rff$importance)
   
-  dir.out <- glue('./rData/{nme}/run_1')
+  dir.out <- glue('./rData/{nme}/run_2')
   dir_create(dir.out)
   
+  save(allclasses_swd, file = paste0(dir.out, '/allclasses_swd.rData'))
   save(rflist, file = paste(dir.out, '/rflist_', NumberOfClusters, '.rdata', sep = ''))
   save(importance, file = paste0(dir.out, '/importanceRF.rData'))
   save(auc, file = paste0(dir.out, '/aucRF_dist.rData'))
   save(rff, file = paste0(dir.out, '/rff_dist.rData'))
   
   # To extract by mask 
+  limt <- gadm(country = 'GHA', level = 0, path = './tmpr')
   lyr <- rast('../01 PREPARE CLIMATE/data/tif/bioc_all.tif')
   lyr <- terra::crop(lyr, limt)
   lyr <- terra::mask(lyr, limt)
@@ -232,6 +237,34 @@ make.rfrs.mdel <- function(tble, crop){
   ## Hacer el predict para todos los puntos, usando la matriz all_classesswd; y así generar la curva de los percentiles; 
   ## Primer percentile..., y te comparto nuevamente las figuras para que le des una revisada 
   ## Hacer dos curvas, una para todo el Mundo y una para Ghana (dos curvas en el mismo gráfico)
+  
+
+  # Map --------------------------------------------------------------------
+  tbl.prob <- rasterProbs
+  tbl.prob <- as_tibble(tbl.prob) %>% setNames(c('Unsuit_1', 'Unsuit_2', paste0('Type_', 1:5)))
+  tbl.prob <- retype(tbl.prob)
+  tbl.prob <- cbind(climatevalues[,1:2], tbl.prob)
+  tbl.prob <- tbl.prob %>% drop_na()
+  tbl.prob <- as_tibble(tbl.prob)
+  rst.prob <- rast(tbl.prob, type = 'xyz')
+  dfr <- tbl.prob %>% mutate(gid = 1:nrow(.)) %>% gather(var, value, -c(gid, x, y))
+  dfr <- mutate(dfr, var = factor(var, levels = c('Unsuit_1', 'Unsuit_2', paste0('Type_', 1:5))))
+  
+  ## To make the map 
+  gtps <- ggplot() + 
+    geom_tile(data = dfr, aes(x = x, y = y, fill = value)) +
+    facet_wrap(~var, ncol = 4, nrow = 2) +
+    scale_fill_gradientn(colors = brewer.pal(n =  9, name = 'RdYlGn')) +
+    geom_sf(data = st_as_sf(limt), fill = NA, col = 'grey30') +
+    coord_sf() +
+    labs(fill = 'Prob\nvalue') +
+    theme_void() + 
+    theme(
+      legend.position = 'bottom', 
+      legend.key.width = unit(3, 'line')
+    )
+  
+  ggsave(plot = gtps, filename = glue('./png/maps/run_2/types_probs.jpg'), units = 'in', width = 9, height = 6.5, dpi = 300)
   
   rasterProbs_na <- na.omit(rasterProbs)
   sum_rasterProbs_na <- apply(rasterProbs_na, 1, sum)
@@ -267,9 +300,9 @@ make.rfrs.mdel <- function(tble, crop){
   
 }
 
-
 # Load data ---------------------------------------------------------------
 pnts <- read_csv('../02 MAKE MODEL/tbl/points/processed/03 points background.csv')
+lbls <- tibble(sp.ecie = c('Theobroma cacao', 'Anacardium occidentale', 'Cocos nucifera', 'Elaeis guineensis', 'Hevea brasiliensis', 'Vitellaria paradoxa', 'Mangifera indica'), common = c('Cocoa', 'Cashew', 'Coconut', 'Oil palm', 'Rubber', 'Shea', 'Mango'))
 
 # To cleaning the points  -------------------------------------------------
 pnts.clea <- make.clea(spce = 'Theobroma cacao')
@@ -277,8 +310,12 @@ pnts.clea <- make.clea(spce = 'Theobroma cacao')
 # To make the VIF ---------------------------------------------------------
 pnts.vifs <- make.vifs(tble = pnts.clea, spce = 'Theobroma cacao')
 
-# To make the Random Forest -----------------------------------------------
+load('./rData/Cocoa/run_2/allclasses_swd.rData')
+allclasses_swd
+colnames(allclasses_swd)
 
+# To make the Random Forest -----------------------------------------------
+make.rfrs.mdel(tble = pnts.vifs, crop = 'Theobroma cacao')
 
 
 
